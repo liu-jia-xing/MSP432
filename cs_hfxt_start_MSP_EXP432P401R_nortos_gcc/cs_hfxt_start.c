@@ -1,108 +1,66 @@
-/* --COPYRIGHT--,BSD
- * Copyright (c) 2017, Texas Instruments Incorporated
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *
- * *  Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- *
- * *  Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- *
- * *  Neither the name of Texas Instruments Incorporated nor the names of
- *    its contributors may be used to endorse or promote products derived
- *    from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
- * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
- * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- * --/COPYRIGHT--*/
-/*******************************************************************************
- * MSP432 Clock System - HFXT Startup
- *
- * Description: This is a simple code example that starts the 48MHz crystal
- * attached to HFXTIN/HFXTOUT, sources MCLK from the crystal, and then
- * blinks an LED using SysTick (which is sourced from MCLK). This is meant
- * as a very elementary code example which shows the use how to start the
- * high frequency crystal and source clock signals from HFXT.
- *
- * This program runs infinitely until manually halted by the user.
- *
- *              MSP432P401
- *             ------------------
- *         /|\|                  |
- *          | |                  |
- *          --|RST         P1.0  |---> P1.0 LED
- *            |      PJ.3 HFXTIN |---------
- *            |                  |         |
- *            |                  |     < 48Mhz xTal >
- *            |                  |         |
- *            |     PJ.2 HFXTOUT |---------
- *
- ******************************************************************************/
+
 /* DriverLib Includes */
 #include <ti/devices/msp432p4xx/driverlib/driverlib.h>
-
-/* Standard Includes */
 #include <stdint.h>
 #include <stdbool.h>
+#define CPU_F ((double)48000000)   //外部高频晶振8MHZ
+#define delay_us(x) __delay_cycles((long)(CPU_F*(double)x/1000000.0))
+#define delay_ms(x) __delay_cycles((long)(CPU_F*(double)x/1000.0))
+#define SCL_H   GPIO_setOutputHighOnPin(GPIO_PORT_P8,GPIO_PIN5)
+#define SCL_L   GPIO_setOutputLowOnPin(GPIO_PORT_P8,GPIO_PIN5)
+
+uint16_t counter=0;
+const Timer_A_UpModeConfig upmode =
+{
+     TIMER_A_CLOCKSOURCE_SMCLK,
+     TIMER_A_CLOCKSOURCE_DIVIDER_48,
+     10000,
+     TIMER_A_TAIE_INTERRUPT_ENABLE,
+     TIMER_A_CCIE_CCR0_INTERRUPT_DISABLE,
+     TIMER_A_DO_CLEAR
+};
 
 int main(void)
 {
     /* Halting the Watchdog */
     MAP_WDT_A_holdTimer();
-    
-    //![Simple CS Config]
-    /* Configuring pins for peripheral/crystal usage and LED for output */
-    MAP_GPIO_setAsPeripheralModuleFunctionOutputPin(GPIO_PORT_PJ,
+    /*开启48M晶振*/
+    //设置J.3,J.2口设置为晶振输入功能
+    GPIO_setAsPeripheralModuleFunctionOutputPin(GPIO_PORT_PJ,
             GPIO_PIN3 | GPIO_PIN2, GPIO_PRIMARY_MODULE_FUNCTION);
-    MAP_GPIO_setAsOutputPin(GPIO_PORT_P1, GPIO_PIN0);
-
-    /* Just in case the user wants to use the getACLK, getMCLK, etc. functions,
-     * let's set the clock frequency in the code. 
-     */
+    //设置P1.0为输出口
+    GPIO_setAsOutputPin(GPIO_PORT_P1, GPIO_PIN0);
+    //设置外部晶振频率 LFTX为32k，HFTX为48M
     CS_setExternalClockSourceFrequency(32000,48000000);
-
-    /* Starting HFXT in non-bypass mode without a timeout. Before we start
-     * we have to change VCORE to 1 to support the 48MHz frequency */
-    MAP_PCM_setCoreVoltageLevel(PCM_VCORE1);
-    MAP_FlashCtl_setWaitState(FLASH_BANK0, 1);
-    MAP_FlashCtl_setWaitState(FLASH_BANK1, 1);
+    //返回电源工作状态
+    PCM_setCoreVoltageLevel(PCM_VCORE1);
+    //返回给定闪存库的闪存等待状态集的数量。
+    FlashCtl_setWaitState(FLASH_BANK0, 1);
+    FlashCtl_setWaitState(FLASH_BANK1, 1);
     CS_startHFXT(false);
 
     /* Initializing MCLK to HFXT (effectively 48MHz) */
-    MAP_CS_initClockSignal(CS_MCLK, CS_HFXTCLK_SELECT, CS_CLOCK_DIVIDER_1);
-    //![Simple CS Config]
-    
-    /* Configuring SysTick to trigger at 12000000 (MCLK is 48MHz so this will 
-     * make it toggle every 0.25s) */
-    MAP_SysTick_enableModule();
-    MAP_SysTick_setPeriod(12000000);
-    MAP_Interrupt_enableSleepOnIsrExit();
-    MAP_SysTick_enableInterrupt();
-    
-     /* Enabling MASTER interrupts */
-    MAP_Interrupt_enableMaster();   
-
+    CS_initClockSignal(CS_MCLK, CS_HFXTCLK_SELECT, CS_CLOCK_DIVIDER_1);
+    CS_initClockSignal(CS_SMCLK, CS_HFXTCLK_SELECT, CS_CLOCK_DIVIDER_1);
+    Timer_A_configureUpMode(TIMER_A0_BASE,&upmode);             //TimeA模式选择
+    Interrupt_enableInterrupt(INT_TA0_N);                       //中断函数允许位
+    Interrupt_enableMaster();                                   //总中断
+    Timer_A_startCounter(TIMER_A0_BASE,TIMER_A_UP_MODE );       //计数器工作
+    GPIO_setAsOutputPin(GPIO_PORT_P8,GPIO_PIN5);
     while (1)
     {
-        MAP_PCM_gotoLPM0();
+        SCL_H;
+        delay_ms(1000);
+        SCL_L;
+        delay_ms(1000);
     }
 }
 
-void SysTick_Handler(void)
-{
-    MAP_GPIO_toggleOutputOnPin(GPIO_PORT_P1, GPIO_PIN0);
+void TA0_N_IRQHandler(void)
+{   counter++;
+    if(counter==100){
+        GPIO_toggleOutputOnPin(GPIO_PORT_P1, GPIO_PIN0);
+        counter=0;
+    }
+    Timer_A_clearInterruptFlag(TIMER_A0_BASE);
 }

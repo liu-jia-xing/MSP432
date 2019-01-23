@@ -92,7 +92,8 @@ int main(void)
      * output */
     MAP_GPIO_setAsPeripheralModuleFunctionOutputPin(GPIO_PORT_P4, GPIO_PIN2,
             GPIO_PRIMARY_MODULE_FUNCTION);
-    MAP_GPIO_setAsPeripheralModuleFunctionInputPin(GPIO_PORT_P2, GPIO_PIN4,
+
+    GPIO_setAsPeripheralModuleFunctionInputPin(GPIO_PORT_P2, GPIO_PIN4,
             GPIO_PRIMARY_MODULE_FUNCTION);
 
     /* Setting ACLK = VLO = 14kHz */
@@ -105,6 +106,7 @@ int main(void)
     MAP_Timer_A_configureContinuousMode(TIMER_A0_BASE, &continuousModeConfig);
 
     /* Enabling interrupts and going to sleep */
+   // Interrupt_enableSleepOnIsrExit();
     MAP_Interrupt_enableSleepOnIsrExit();
     MAP_Interrupt_enableInterrupt(INT_TA0_N);
     MAP_Interrupt_enableMaster();

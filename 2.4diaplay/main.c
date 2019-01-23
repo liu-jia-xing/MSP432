@@ -1,75 +1,48 @@
-/* --COPYRIGHT--,BSD
- * Copyright (c) 2015, Texas Instruments Incorporated
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *
- * *  Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- *
- * *  Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- *
- * *  Neither the name of Texas Instruments Incorporated nor the names of
- *    its contributors may be used to endorse or promote products derived
- *    from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
- * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
- * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- * --/COPYRIGHT--*/
-//***************************************************************************************
-//  Blink the LED Demo - Software Toggle P1.0
-//
-//  Description; Toggle P1.0 inside of a software loop.
-//  ACLK = n/a, MCLK = SMCLK = default DCO
-//
-//                MSP432P4xx
-//             -----------------
-//         /|\|              XIN|-
-//          | |                 |
-//          --|RST          XOUT|-
-//            |                 |
-//            |             P1.0|-->LED
-//
-//  E. Chen
-//  Texas Instruments, Inc
-//  March 2015
-//  Built with Code Composer Studio v6
-//***************************************************************************************
 
 #include <ti/devices/msp432p4xx/driverlib/driverlib.h>
+#include "SPIT.h"
+#include "TFT.h"
+#include <stdint.h>
+#include <stdbool.h>
 
-int main(void)
-{
-    volatile uint32_t i;
-
-    // Stop watchdog timer
-    WDT_A_hold(WDT_A_BASE);
-
-    // Set P1.0 to output direction
-
-    GPIO_setAsOutputPin(GPIO_PORT_P1,GPIO_PIN0);
-    GPIO_setOutputHighOnPin(GPIO_PORT_P1,GPIO_PIN0);
+/*
+P1.6 Data Out (SIMO)
+P1.5 Serial Clock Out (CLK)
+P5.0 CS
+P5.1 DC
+P5.2 RESET
+ */
+int main(void){
+     WDT_A_holdTimer();
+    GPIO_PORT_INIT();
+    //设置J.3,J.2口设置为晶振输入功能
+        GPIO_setAsPeripheralModuleFunctionOutputPin(GPIO_PORT_PJ,
+                GPIO_PIN3 | GPIO_PIN2, GPIO_PRIMARY_MODULE_FUNCTION);
+        //设置P1.0为输出口
+        GPIO_setAsOutputPin(GPIO_PORT_P1, GPIO_PIN0);
+        //设置外部晶振频率 LFTX为32k，HFTX为48M
+        CS_setExternalClockSourceFrequency(32000,48000000);
+        //返回电源工作状态
+        PCM_setCoreVoltageLevel(PCM_VCORE1);
+        //返回给定闪存库的闪存等待状态集的数量。
+        FlashCtl_setWaitState(FLASH_BANK0, 1);
+        FlashCtl_setWaitState(FLASH_BANK1, 1);
+        CS_startHFXT(false);
+        CS_initClockSignal(CS_MCLK,CS_HFXTCLK_SELECT , CS_CLOCK_DIVIDER_1);
+    MAP_CS_initClockSignal(CS_SMCLK,CS_HFXTCLK_SELECT , CS_CLOCK_DIVIDER_1);
+    MAP_CS_setDCOFrequency(8330000);
+    TFT_port_init();
+    TFT_init();
+    LCD_Clear(LIGHTGREEN);
+    LCD_PutString24(0,0,"九江学院",LIGHTBLUE,LIGHTGREEN);
+    Show_Image(0,240,0,320,gImage_2);
     while(1)
     {
-         for(i=100000; i>0; i--);
-        GPIO_setOutputHighOnPin(GPIO_PORT_P1,GPIO_PIN0);
-  //       Toggle P1.0 output
 
-        // Delay
-        for(i=100000; i>0; i--);
-        GPIO_setOutputLowOnPin(GPIO_PORT_P1,GPIO_PIN0);
     }
+}
+void EUSCIB0_IRQHandler(void){
+    uint32_t status = SPI_getEnabledInterruptStatus(EUSCI_B0_BASE);
+
+    SPI_clearInterruptFlag(EUSCI_B0_BASE, status);
 }
